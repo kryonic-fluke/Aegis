@@ -1,0 +1,36 @@
+# Binaries & build output
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+# Main binary if built locally at root
+aegis
+
+# Test artifacts & profiling
+*.out
+*.test
+*.prof
+coverage.html
+
+# Local environment & secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+
+# IDE / Tool-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Antigravity / AI rules & workspace caches
+.antigravity/
+.cursorrules
+.windsurfrules
+
+# OS-specific files
+.DS_Store
+Thumbs.db
