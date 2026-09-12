@@ -9,7 +9,8 @@ type Config struct {
 	Port         string
 	Env          string        
 	LogLevel     string        
-	ReadTimeout  time.Duration 
+	ReadTimeout  time.Duration
+	GeminiAPIKey string
 	WriteTimeout time.Duration 
 	IdleTimeout  time.Duration 
 }
@@ -22,6 +23,7 @@ func Load() *Config{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
+		GeminiAPIKey: getEnv("GEMINI_API_KEY", ""),
 	}
 }
 
