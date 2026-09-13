@@ -8,19 +8,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/kryonic-fluke/aegis/internal/config"
+	"github.com/kryonic-fluke/aegis/internal/llm"
 )
 
 type Server struct {
-	cfg    *config.Config
-	logger *slog.Logger
-	router *chi.Mux
+	cfg      *config.Config
+	logger   *slog.Logger
+	router   *chi.Mux
+	provider llm.Provider
 }
 
-func New(cfg *config.Config, logger *slog.Logger) *Server {
+func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider) *Server {
 	s := &Server{
-		cfg:    cfg,
-		logger: logger,
-		router: chi.NewRouter(),
+		cfg:      cfg,
+		logger:   logger,
+		router:   chi.NewRouter(),
+		provider: provider,
 	}
 
 	s.setupMiddlewares()

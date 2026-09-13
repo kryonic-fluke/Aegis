@@ -7,6 +7,7 @@ import (
 
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
+	s.router.Post("/v1/chat/completions", s.handleChatCompletions)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
