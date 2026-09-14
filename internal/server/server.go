@@ -12,6 +12,7 @@ import (
 
 	"github.com/kryonic-fluke/aegis/internal/config"
 	"github.com/kryonic-fluke/aegis/internal/llm"
+	"github.com/kryonic-fluke/aegis/internal/ratelimit"
 )
 
 type Server struct {
@@ -21,9 +22,10 @@ type Server struct {
 	provider    llm.Provider
 	pgPool      *pgxpool.Pool
 	redisClient *redis.Client
+	limiter     *ratelimit.TokenBucketLimiter
 }
 
-func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client) *Server {
+func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client, limiter *ratelimit.TokenBucketLimiter) *Server {
 	s := &Server{
 		cfg:         cfg,
 		logger:      logger,
@@ -31,6 +33,7 @@ func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool 
 		provider:    provider,
 		pgPool:      pgPool,
 		redisClient: redisClient,
+		limiter:     limiter,
 	}
 
 	s.setupMiddlewares()

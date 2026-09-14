@@ -5,11 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
-	s.router.Post("/v1/chat/completions", s.handleChatCompletions)
+
+	s.router.Route("/v1", func(r chi.Router) {
+		r.Use(s.rateLimitMiddleware)
+		r.Post("/chat/completions", s.handleChatCompletions)
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

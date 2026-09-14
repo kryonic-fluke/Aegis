@@ -12,6 +12,7 @@ import (
 	"github.com/kryonic-fluke/aegis/internal/config"
 	"github.com/kryonic-fluke/aegis/internal/db"
 	"github.com/kryonic-fluke/aegis/internal/llm"
+	"github.com/kryonic-fluke/aegis/internal/ratelimit"
 	"github.com/kryonic-fluke/aegis/internal/server"
 )
 
@@ -48,9 +49,15 @@ func main() {
 		logger.Info("connected to redis")
 	}
 
+	var limiter *ratelimit.TokenBucketLimiter
+	if redisClient != nil {
+		limiter = ratelimit.NewTokenBucketLimiter(redisClient, cfg.RateLimitCapacity, cfg.RateLimitRefillRate)
+		logger.Info("initialized token bucket rate limiter", "capacity", cfg.RateLimitCapacity, "refill_rate", cfg.RateLimitRefillRate)
+	}
+
 	provider := llm.NewGeminiProvider(cfg.GeminiAPIKey)
 
-	srv := server.New(cfg, logger, provider, pgPool, redisClient)
+	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter)
 
 	if err := srv.Start(); err != nil {
 		logger.Error("server failed to start", "error", err)
