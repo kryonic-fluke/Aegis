@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/kryonic-fluke/aegis/internal/cache"
 	"github.com/kryonic-fluke/aegis/internal/config"
 	"github.com/kryonic-fluke/aegis/internal/llm"
 	"github.com/kryonic-fluke/aegis/internal/ratelimit"
@@ -23,9 +24,10 @@ type Server struct {
 	pgPool      *pgxpool.Pool
 	redisClient *redis.Client
 	limiter     *ratelimit.TokenBucketLimiter
+	exactCache  *cache.ExactCache
 }
 
-func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client, limiter *ratelimit.TokenBucketLimiter) *Server {
+func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client, limiter *ratelimit.TokenBucketLimiter, exactCache *cache.ExactCache) *Server {
 	s := &Server{
 		cfg:         cfg,
 		logger:      logger,
@@ -34,6 +36,7 @@ func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool 
 		pgPool:      pgPool,
 		redisClient: redisClient,
 		limiter:     limiter,
+		exactCache:  exactCache,
 	}
 
 	s.setupMiddlewares()

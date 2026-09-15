@@ -18,6 +18,7 @@ type Config struct {
 	RedisURL            string
 	RateLimitCapacity   int
 	RateLimitRefillRate float64
+	CacheTTL            time.Duration
 }
 
 func Load() *Config {
@@ -33,6 +34,7 @@ func Load() *Config {
 		RedisURL:            getEnv("REDIS_URL", "localhost:6379"),
 		RateLimitCapacity:   getEnvInt("RATE_LIMIT_CAPACITY", 10),
 		RateLimitRefillRate: getEnvFloat("RATE_LIMIT_REFILL_RATE", 2.0),
+		CacheTTL:            getEnvDuration("CACHE_TTL", 24*time.Hour),
 	}
 }
 
@@ -66,4 +68,16 @@ func getEnvFloat(key string, fallback float64) float64 {
 		return fallback
 	}
 	return f
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	val, ok := os.LookupEnv(key)
+	if !ok || val == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(val)
+	if err != nil {
+		return fallback
+	}
+	return d
 }

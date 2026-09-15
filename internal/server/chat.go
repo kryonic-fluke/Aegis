@@ -26,6 +26,24 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req *llm.ChatRequest) {
+	var cacheKey string
+	if s.exactCache != nil {
+		key, err := s.exactCache.GenerateKey(req)
+		if err == nil {
+			cacheKey = key
+			cachedResp, err := s.exactCache.Get(r.Context(), cacheKey)
+			if err == nil && cachedResp != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Cache", "HIT")
+				w.WriteHeader(http.StatusOK)
+				if err := json.NewEncoder(w).Encode(cachedResp); err != nil {
+					s.logger.Error("failed to encode cached chat response", "error", err)
+				}
+				return
+			}
+		}
+	}
+
 	resp, err := s.provider.Chat(r.Context(), req)
 	if err != nil {
 		s.logger.Error("provider chat failed", "error", err)
@@ -33,7 +51,14 @@ func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req
 		return
 	}
 
+	if s.exactCache != nil && cacheKey != "" {
+		if err := s.exactCache.Set(r.Context(), cacheKey, resp); err != nil {
+			s.logger.Error("failed to cache chat response", "error", err)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Cache", "MISS")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		s.logger.Error("failed to encode chat response", "error", err)

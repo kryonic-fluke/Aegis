@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/kryonic-fluke/aegis/internal/cache"
 	"github.com/kryonic-fluke/aegis/internal/config"
 	"github.com/kryonic-fluke/aegis/internal/db"
 	"github.com/kryonic-fluke/aegis/internal/llm"
@@ -55,9 +56,15 @@ func main() {
 		logger.Info("initialized token bucket rate limiter", "capacity", cfg.RateLimitCapacity, "refill_rate", cfg.RateLimitRefillRate)
 	}
 
+	var exactCache *cache.ExactCache
+	if redisClient != nil {
+		exactCache = cache.NewExactCache(redisClient, cfg.CacheTTL)
+		logger.Info("initialized exact cache layer", "ttl", cfg.CacheTTL)
+	}
+
 	provider := llm.NewGeminiProvider(cfg.GeminiAPIKey)
 
-	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter)
+	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter, exactCache)
 
 	if err := srv.Start(); err != nil {
 		logger.Error("server failed to start", "error", err)
