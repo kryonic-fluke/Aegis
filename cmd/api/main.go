@@ -62,9 +62,25 @@ func main() {
 		logger.Info("initialized exact cache layer", "ttl", cfg.CacheTTL)
 	}
 
+	var embedder llm.Embedder
+	if cfg.GeminiAPIKey != "" {
+		embedder = llm.NewGeminiEmbedder(cfg.GeminiAPIKey)
+		logger.Info("initialized gemini embedder")
+	}
+
+	var semanticCache *cache.SemanticCache
+	if pgPool != nil {
+		semanticCache = cache.NewSemanticCache(pgPool)
+		if err := semanticCache.InitSchema(ctx); err != nil {
+			logger.Warn("failed to initialize semantic cache schema", "error", err)
+		} else {
+			logger.Info("initialized pgvector semantic cache with hnsw index")
+		}
+	}
+
 	provider := llm.NewGeminiProvider(cfg.GeminiAPIKey)
 
-	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter, exactCache)
+	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter, exactCache, embedder, semanticCache)
 
 	if err := srv.Start(); err != nil {
 		logger.Error("server failed to start", "error", err)

@@ -34,13 +34,39 @@ func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req
 			cachedResp, err := s.exactCache.Get(r.Context(), cacheKey)
 			if err == nil && cachedResp != nil {
 				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("X-Cache", "HIT")
+				w.Header().Set("X-Cache", "EXACT_HIT")
 				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(cachedResp); err != nil {
 					s.logger.Error("failed to encode cached chat response", "error", err)
 				}
 				return
 			}
+		}
+	}
+
+	prompt := extractPrompt(req.Messages)
+	var promptEmbedding []float32
+
+	if s.semanticCache != nil && s.embedder != nil && prompt != "" {
+		emb, err := s.embedder.Embed(r.Context(), prompt)
+		if err == nil {
+			promptEmbedding = emb
+			semanticResp, similarity, err := s.semanticCache.FindSimilar(r.Context(), req.Model, promptEmbedding, s.cfg.SemanticCacheThreshold)
+			if err == nil && semanticResp != nil {
+				if s.exactCache != nil && cacheKey != "" {
+					_ = s.exactCache.Set(r.Context(), cacheKey, semanticResp)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Cache", "SEMANTIC_HIT")
+				w.Header().Set("X-Cache-Similarity", fmt.Sprintf("%.4f", similarity))
+				w.WriteHeader(http.StatusOK)
+				if err := json.NewEncoder(w).Encode(semanticResp); err != nil {
+					s.logger.Error("failed to encode semantic cached response", "error", err)
+				}
+				return
+			}
+		} else {
+			s.logger.Warn("failed to generate prompt embedding for cache", "error", err)
 		}
 	}
 
@@ -53,7 +79,21 @@ func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req
 
 	if s.exactCache != nil && cacheKey != "" {
 		if err := s.exactCache.Set(r.Context(), cacheKey, resp); err != nil {
-			s.logger.Error("failed to cache chat response", "error", err)
+			s.logger.Error("failed to exact cache chat response", "error", err)
+		}
+	}
+
+	if s.semanticCache != nil && prompt != "" {
+		if promptEmbedding == nil && s.embedder != nil {
+			emb, err := s.embedder.Embed(r.Context(), prompt)
+			if err == nil {
+				promptEmbedding = emb
+			}
+		}
+		if promptEmbedding != nil {
+			if err := s.semanticCache.Store(r.Context(), prompt, req.Model, promptEmbedding, resp); err != nil {
+				s.logger.Error("failed to semantic cache chat response", "error", err)
+			}
 		}
 	}
 
@@ -96,4 +136,16 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, req *l
 	if err := scanner.Err(); err != nil && err != io.EOF {
 		s.logger.Error("error reading from stream", "error", err)
 	}
+}
+
+func extractPrompt(messages []llm.Message) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return messages[i].Content
+		}
+	}
+	if len(messages) > 0 {
+		return messages[len(messages)-1].Content
+	}
+	return ""
 }

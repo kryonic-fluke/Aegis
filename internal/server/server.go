@@ -17,26 +17,30 @@ import (
 )
 
 type Server struct {
-	cfg         *config.Config
-	logger      *slog.Logger
-	router      *chi.Mux
-	provider    llm.Provider
-	pgPool      *pgxpool.Pool
-	redisClient *redis.Client
-	limiter     *ratelimit.TokenBucketLimiter
-	exactCache  *cache.ExactCache
+	cfg           *config.Config
+	logger        *slog.Logger
+	router        *chi.Mux
+	provider      llm.Provider
+	pgPool        *pgxpool.Pool
+	redisClient   *redis.Client
+	limiter       *ratelimit.TokenBucketLimiter
+	exactCache    *cache.ExactCache
+	embedder      llm.Embedder
+	semanticCache *cache.SemanticCache
 }
 
-func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client, limiter *ratelimit.TokenBucketLimiter, exactCache *cache.ExactCache) *Server {
+func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client, limiter *ratelimit.TokenBucketLimiter, exactCache *cache.ExactCache, embedder llm.Embedder, semanticCache *cache.SemanticCache) *Server {
 	s := &Server{
-		cfg:         cfg,
-		logger:      logger,
-		router:      chi.NewRouter(),
-		provider:    provider,
-		pgPool:      pgPool,
-		redisClient: redisClient,
-		limiter:     limiter,
-		exactCache:  exactCache,
+		cfg:           cfg,
+		logger:        logger,
+		router:        chi.NewRouter(),
+		provider:      provider,
+		pgPool:        pgPool,
+		redisClient:   redisClient,
+		limiter:       limiter,
+		exactCache:    exactCache,
+		embedder:      embedder,
+		semanticCache: semanticCache,
 	}
 
 	s.setupMiddlewares()
