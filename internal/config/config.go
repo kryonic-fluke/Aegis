@@ -25,6 +25,8 @@ type Config struct {
 	ModelFast              string
 	ModelBalanced          string
 	ModelDeep              string
+	SecondaryAPIKey        string
+	SecondaryModel         string
 }
 
 func Load() *Config {
@@ -48,6 +50,8 @@ func Load() *Config {
 		ModelFast:              getEnv("MODEL_FAST", "gemini-2.5-flash-lite"),
 		ModelBalanced:          getEnv("MODEL_BALANCED", "gemini-2.5-flash"),
 		ModelDeep:              getEnv("MODEL_DEEP", "gemini-2.5-pro"),
+		SecondaryAPIKey:        getEnv("SECONDARY_API_KEY", ""),
+		SecondaryModel:         getEnv("SECONDARY_MODEL", "gemini-3.6-flash"),
 	}
 }
 
