@@ -89,7 +89,15 @@ func main() {
 		}
 	}
 
-	provider := llm.NewGeminiProvider(cfg.GeminiAPIKey)
+	primaryProvider := llm.NewGeminiProvider(cfg.GeminiAPIKey)
+
+	secondaryKey := cfg.SecondaryAPIKey
+	if secondaryKey == "" {
+		secondaryKey = cfg.GeminiAPIKey
+	}
+	secondaryProvider := llm.NewGeminiProvider(secondaryKey)
+
+	provider := llm.NewFailoverProvider(primaryProvider, secondaryProvider, logger)
 
 	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter, exactCache, embedder, semanticCache, modelRouter)
 

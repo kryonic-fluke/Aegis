@@ -88,11 +88,20 @@ func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req
 		}
 	}
 
-	resp, err := s.provider.Chat(r.Context(), req)
+	ctx, failoverInfo := llm.WithFailoverTracking(r.Context())
+	resp, err := s.provider.Chat(ctx, req)
 	if err != nil {
 		s.logger.Error("provider chat failed", "error", err)
 		http.Error(w, fmt.Sprintf("provider error: %v", err), http.StatusBadGateway)
 		return
+	}
+
+	if failoverInfo != nil && failoverInfo.Triggered {
+		w.Header().Set("X-Provider", "secondary")
+		w.Header().Set("X-Provider-Failover", "true")
+	} else {
+		w.Header().Set("X-Provider", "primary")
+		w.Header().Set("X-Provider-Failover", "false")
 	}
 
 	if s.exactCache != nil && cacheKey != "" {
@@ -154,13 +163,22 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, req *l
 		}
 	}
 
-	stream, err := s.provider.ChatStream(r.Context(), req)
+	ctx, failoverInfo := llm.WithFailoverTracking(r.Context())
+	stream, err := s.provider.ChatStream(ctx, req)
 	if err != nil {
 		s.logger.Error("provider stream failed", "error", err)
 		http.Error(w, fmt.Sprintf("provider error: %v", err), http.StatusBadGateway)
 		return
 	}
 	defer stream.Close()
+
+	if failoverInfo != nil && failoverInfo.Triggered {
+		w.Header().Set("X-Provider", "secondary")
+		w.Header().Set("X-Provider-Failover", "true")
+	} else {
+		w.Header().Set("X-Provider", "primary")
+		w.Header().Set("X-Provider-Failover", "false")
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
