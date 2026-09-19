@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,15 +21,21 @@ type Config struct {
 	RateLimitRefillRate    float64
 	CacheTTL               time.Duration
 	SemanticCacheThreshold float64
+	EmbeddingModel         string
+	ModelFast              string
+	ModelBalanced          string
+	ModelDeep              string
 }
 
 func Load() *Config {
+	loadEnvFile(".env")
+
 	return &Config{
 		Port:                   getEnv("PORT", "8080"),
 		Env:                    getEnv("ENV", "development"),
 		LogLevel:               getEnv("LOG_LEVEL", "info"),
-		ReadTimeout:            5 * time.Second,
-		WriteTimeout:           10 * time.Second,
+		ReadTimeout:            15 * time.Second,
+		WriteTimeout:           120 * time.Second,
 		IdleTimeout:            120 * time.Second,
 		GeminiAPIKey:           getEnv("GEMINI_API_KEY", ""),
 		DatabaseURL:            getEnv("DATABASE_URL", "postgres://aegis_user:aegis_password@localhost:5432/aegis_db?sslmode=disable"),
@@ -37,6 +44,33 @@ func Load() *Config {
 		RateLimitRefillRate:    getEnvFloat("RATE_LIMIT_REFILL_RATE", 2.0),
 		CacheTTL:               getEnvDuration("CACHE_TTL", 24*time.Hour),
 		SemanticCacheThreshold: getEnvFloat("SEMANTIC_CACHE_THRESHOLD", 0.95),
+		EmbeddingModel:         getEnv("EMBEDDING_MODEL", "gemini-embedding-001"),
+		ModelFast:              getEnv("MODEL_FAST", "gemini-2.5-flash-lite"),
+		ModelBalanced:          getEnv("MODEL_BALANCED", "gemini-2.5-flash"),
+		ModelDeep:              getEnv("MODEL_DEEP", "gemini-2.5-pro"),
+	}
+}
+
+func loadEnvFile(filename string) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			val = strings.Trim(val, `"'`)
+			if _, exists := os.LookupEnv(key); !exists {
+				_ = os.Setenv(key, val)
+			}
+		}
 	}
 }
 

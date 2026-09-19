@@ -15,21 +15,27 @@ type Embedder interface {
 
 type GeminiEmbedder struct {
 	apiKey     string
+	model      string
 	baseURL    string
 	httpClient *http.Client
 }
 
-func NewGeminiEmbedder(apiKey string) *GeminiEmbedder {
+func NewGeminiEmbedder(apiKey string, model string) *GeminiEmbedder {
+	if model == "" {
+		model = "text-embedding-004"
+	}
 	return &GeminiEmbedder{
 		apiKey:     apiKey,
+		model:      model,
 		baseURL:    "https://generativelanguage.googleapis.com/v1beta/openai",
 		httpClient: &http.Client{},
 	}
 }
 
 type embeddingRequest struct {
-	Model string `json:"model"`
-	Input string `json:"input"`
+	Model      string `json:"model"`
+	Input      string `json:"input"`
+	Dimensions int    `json:"dimensions,omitempty"`
 }
 
 type embeddingResponse struct {
@@ -40,8 +46,9 @@ type embeddingResponse struct {
 
 func (e *GeminiEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	reqBody := embeddingRequest{
-		Model: "text-embedding-004",
-		Input: text,
+		Model:      e.model,
+		Input:      text,
+		Dimensions: 768,
 	}
 
 	body, err := json.Marshal(reqBody)

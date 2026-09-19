@@ -14,6 +14,7 @@ import (
 	"github.com/kryonic-fluke/aegis/internal/config"
 	"github.com/kryonic-fluke/aegis/internal/llm"
 	"github.com/kryonic-fluke/aegis/internal/ratelimit"
+	"github.com/kryonic-fluke/aegis/internal/router"
 )
 
 type Server struct {
@@ -27,9 +28,10 @@ type Server struct {
 	exactCache    *cache.ExactCache
 	embedder      llm.Embedder
 	semanticCache *cache.SemanticCache
+	modelRouter   *router.Router
 }
 
-func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client, limiter *ratelimit.TokenBucketLimiter, exactCache *cache.ExactCache, embedder llm.Embedder, semanticCache *cache.SemanticCache) *Server {
+func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool *pgxpool.Pool, redisClient *redis.Client, limiter *ratelimit.TokenBucketLimiter, exactCache *cache.ExactCache, embedder llm.Embedder, semanticCache *cache.SemanticCache, modelRouter *router.Router) *Server {
 	s := &Server{
 		cfg:           cfg,
 		logger:        logger,
@@ -41,6 +43,7 @@ func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool 
 		exactCache:    exactCache,
 		embedder:      embedder,
 		semanticCache: semanticCache,
+		modelRouter:   modelRouter,
 	}
 
 	s.setupMiddlewares()

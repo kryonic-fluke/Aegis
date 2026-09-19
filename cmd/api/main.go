@@ -14,6 +14,7 @@ import (
 	"github.com/kryonic-fluke/aegis/internal/db"
 	"github.com/kryonic-fluke/aegis/internal/llm"
 	"github.com/kryonic-fluke/aegis/internal/ratelimit"
+	"github.com/kryonic-fluke/aegis/internal/router"
 	"github.com/kryonic-fluke/aegis/internal/server"
 )
 
@@ -64,8 +65,8 @@ func main() {
 
 	var embedder llm.Embedder
 	if cfg.GeminiAPIKey != "" {
-		embedder = llm.NewGeminiEmbedder(cfg.GeminiAPIKey)
-		logger.Info("initialized gemini embedder")
+		embedder = llm.NewGeminiEmbedder(cfg.GeminiAPIKey, cfg.EmbeddingModel)
+		logger.Info("initialized gemini embedder", "model", cfg.EmbeddingModel)
 	}
 
 	var semanticCache *cache.SemanticCache
@@ -78,9 +79,19 @@ func main() {
 		}
 	}
 
+	var modelRouter *router.Router
+	if embedder != nil {
+		modelRouter = router.NewRouter(embedder, cfg)
+		if err := modelRouter.InitPrototypes(ctx); err != nil {
+			logger.Warn("failed to initialize router prototypes", "error", err)
+		} else {
+			logger.Info("initialized hybrid model router with in-memory prototypes")
+		}
+	}
+
 	provider := llm.NewGeminiProvider(cfg.GeminiAPIKey)
 
-	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter, exactCache, embedder, semanticCache)
+	srv := server.New(cfg, logger, provider, pgPool, redisClient, limiter, exactCache, embedder, semanticCache, modelRouter)
 
 	if err := srv.Start(); err != nil {
 		logger.Error("server failed to start", "error", err)
