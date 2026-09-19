@@ -1,9 +1,15 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,6 +19,7 @@ import (
 	"github.com/kryonic-fluke/aegis/internal/cache"
 	"github.com/kryonic-fluke/aegis/internal/config"
 	"github.com/kryonic-fluke/aegis/internal/llm"
+	"github.com/kryonic-fluke/aegis/internal/metrics"
 	"github.com/kryonic-fluke/aegis/internal/ratelimit"
 	"github.com/kryonic-fluke/aegis/internal/router"
 )
@@ -55,6 +62,7 @@ func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool 
 func (s *Server) setupMiddlewares() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.RealIP)
+	s.router.Use(metrics.Middleware)
 	s.router.Use(middleware.Recoverer)
 }
 
@@ -69,6 +77,24 @@ func (s *Server) Start() error {
 		IdleTimeout:  s.cfg.IdleTimeout,
 	}
 
+	shutdownError := make(chan error)
+	go func() {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		sig := <-quit
+
+		s.logger.Info("shutting down server", "signal", sig.String())
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		shutdownError <- httpServer.Shutdown(ctx)
+	}()
+
 	s.logger.Info("server starting", "addr", addr, "env", s.cfg.Env)
-	return httpServer.ListenAndServe()
+	err := httpServer.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return <-shutdownError
+	}
+	return err
 }
