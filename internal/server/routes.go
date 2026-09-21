@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
+	s.router.Handle("/metrics", promhttp.Handler())
 
 	s.router.Route("/v1", func(r chi.Router) {
 		r.Use(s.rateLimitMiddleware)
