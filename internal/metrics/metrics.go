@@ -41,6 +41,21 @@ var (
 			Help: "Total number of failover events triggered to secondary provider",
 		},
 	)
+
+	CacheHitsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "aegis_cache_hits_total",
+			Help: "Total cache hits by layer",
+		},
+		[]string{"layer"},
+	)
+
+	CacheMissesTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "aegis_cache_misses_total",
+			Help: "Total cache misses across all layers",
+		},
+	)
 )
 
 type statusRecorder struct {
@@ -61,9 +76,11 @@ func Middleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 
 		duration := time.Since(start).Seconds()
-		routePattern := chi.RouteContext(r.Context()).RoutePattern()
-		if routePattern == "" {
-			routePattern = r.URL.Path
+		routePattern := r.URL.Path
+		if rctx := chi.RouteContext(r.Context()); rctx != nil {
+			if pattern := rctx.RoutePattern(); pattern != "" {
+				routePattern = pattern
+			}
 		}
 
 		cacheStatus := w.Header().Get("X-Cache")
@@ -81,6 +98,15 @@ func Middleware(next http.Handler) http.Handler {
 
 		if w.Header().Get("X-Provider-Failover") == "true" {
 			FailoverEventsTotal.Inc()
+		}
+
+		switch cacheStatus {
+		case "EXACT_HIT":
+			CacheHitsTotal.WithLabelValues("exact").Inc()
+		case "SEMANTIC_HIT":
+			CacheHitsTotal.WithLabelValues("semantic").Inc()
+		case "MISS":
+			CacheMissesTotal.Inc()
 		}
 	})
 }

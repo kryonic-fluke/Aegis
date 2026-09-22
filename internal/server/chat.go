@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/kryonic-fluke/aegis/internal/llm"
 	"github.com/kryonic-fluke/aegis/internal/router"
@@ -27,8 +28,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req *llm.ChatRequest) {
+	bypassExact := r.Header.Get("X-Bypass-Exact-Cache") == "true"
 	var cacheKey string
-	if s.exactCache != nil {
+	if s.exactCache != nil && !bypassExact {
 		key, err := s.exactCache.GenerateKey(req)
 		if err == nil {
 			cacheKey = key
@@ -49,17 +51,23 @@ func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req
 	var promptEmbedding []float32
 
 	if s.semanticCache != nil && s.embedder != nil && prompt != "" {
+		embStart := time.Now()
 		emb, err := s.embedder.Embed(r.Context(), prompt)
+		embDuration := time.Since(embStart)
 		if err == nil {
 			promptEmbedding = emb
+			vecStart := time.Now()
 			semanticResp, similarity, err := s.semanticCache.FindSimilar(r.Context(), req.Model, promptEmbedding, s.cfg.SemanticCacheThreshold)
+			vecDuration := time.Since(vecStart)
 			if err == nil && semanticResp != nil {
-				if s.exactCache != nil && cacheKey != "" {
+				if s.exactCache != nil && cacheKey != "" && !bypassExact {
 					_ = s.exactCache.Set(r.Context(), cacheKey, semanticResp)
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Cache", "SEMANTIC_HIT")
 				w.Header().Set("X-Cache-Similarity", fmt.Sprintf("%.4f", similarity))
+				w.Header().Set("X-Embedding-Duration-Ms", fmt.Sprintf("%.2f", float64(embDuration.Microseconds())/1000.0))
+				w.Header().Set("X-Vector-Duration-Ms", fmt.Sprintf("%.2f", float64(vecDuration.Microseconds())/1000.0))
 				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(semanticResp); err != nil {
 					s.logger.Error("failed to encode semantic cached response", "error", err)
@@ -77,12 +85,6 @@ func (s *Server) handleChatNonStream(w http.ResponseWriter, r *http.Request, req
 		if err == nil && dec != nil {
 			routingDecision = dec
 			req.Model = dec.SelectedModel
-			w.Header().Set("X-Routing-Class", string(dec.Class))
-			w.Header().Set("X-Routing-Model", dec.SelectedModel)
-			w.Header().Set("X-Routing-Scores", fmt.Sprintf("FAST=%.2f,BALANCED=%.2f,DEEP=%.2f",
-				dec.FinalScores[router.RouteFast],
-				dec.FinalScores[router.RouteBalanced],
-				dec.FinalScores[router.RouteDeep]))
 		} else {
 			s.logger.Warn("model routing failed, using default model", "error", err)
 		}

@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: aegis
+    static_configs:
+      - targets:
+          - aegis:8080
+    metrics_path: /metrics

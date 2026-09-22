@@ -85,4 +85,3 @@ func (l *TokenBucketLimiter) Allow(ctx context.Context, key string) (*Result, er
 		Remaining: int(remaining),
 	}, nil
 }
-

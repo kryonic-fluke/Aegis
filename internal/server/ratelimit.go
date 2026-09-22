@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 )
 
@@ -14,6 +15,9 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 		}
 
 		clientIP := r.RemoteAddr
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			clientIP = host
+		}
 		if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
 			clientIP = realIP
 		}
@@ -41,4 +45,3 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-

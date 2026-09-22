@@ -29,7 +29,45 @@ services:
       timeout: 5s
       retries: 5
 
+  aegis:
+    build: .
+    container_name: aegis-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      ENV: production
+      LOG_LEVEL: info
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SECONDARY_API_KEY: ${SECONDARY_API_KEY:-}
+      DATABASE_URL: postgres://aegis_user:aegis_password@postgres:5432/aegis_db?sslmode=disable
+      REDIS_URL: redis:6379
+      RATE_LIMIT_CAPACITY: ${RATE_LIMIT_CAPACITY:-100}
+      RATE_LIMIT_REFILL_RATE: ${RATE_LIMIT_REFILL_RATE:-20.0}
+      CACHE_TTL: ${CACHE_TTL:-24h}
+      SEMANTIC_CACHE_THRESHOLD: ${SEMANTIC_CACHE_THRESHOLD:-0.95}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini-embedding-001}
+      MODEL_FAST: ${MODEL_FAST:-gemini-3.5-flash-lite}
+      MODEL_BALANCED: ${MODEL_BALANCED:-gemini-3.6-flash}
+      MODEL_DEEP: ${MODEL_DEEP:-gemini-3.8-flash}
+      SECONDARY_MODEL: ${SECONDARY_MODEL:-gemini-3.6-flash}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    container_name: aegis-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - aegis
+
 volumes:
   postgres_data:
   redis_data:
-
