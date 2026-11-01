@@ -60,10 +60,27 @@ func New(cfg *config.Config, logger *slog.Logger, provider llm.Provider, pgPool 
 }
 
 func (s *Server) setupMiddlewares() {
+	s.router.Use(corsMiddleware)
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.RealIP)
 	s.router.Use(metrics.Middleware)
 	s.router.Use(middleware.Recoverer)
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token, X-Bypass-Exact-Cache")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Cache, X-Cache-Similarity, X-Embedding-Duration-Ms, X-Vector-Duration-Ms, X-Provider, X-Provider-Failover, X-Routing-Class, X-Routing-Model, X-Routing-Scores, X-RateLimit-Remaining")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Start() error {

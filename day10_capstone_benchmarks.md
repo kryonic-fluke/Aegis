@@ -233,3 +233,58 @@ docker run --rm -v "${PWD}/scripts:/scripts" --network ageis_default -e BASE_URL
 3. **Upstream Degradation**:
    - A single cold miss consumes 9.1s of connection holding time. At 1,417 req/s, the gateway can handle massive traffic surges *only* when protected by the two-tier exact + semantic cache. If the cache is cold, concurrency must be strictly capped via rate limiting to prevent thread exhaustion.
 
+---
+
+## Test 4 — Mixed Production Traffic Benchmark (Realistic Pareto Distribution)
+
+### Objective
+Measure system-wide performance under realistic production conditions where user traffic follows a Pareto distribution: ~70% popular queries (exact cache hits), ~20% paraphrases (semantic cache hits), and ~10% novel queries (cold upstream misses).
+
+### Command
+```powershell
+docker run --rm -v "${PWD}/scripts:/scripts" --network ageis_default -e BASE_URL=http://aegis-gateway:8080 grafana/k6 run /scripts/load_test_mixed_traffic.js
+```
+
+### Raw k6 Output
+```
+     scenarios: (100.00%) 1 scenario, 5 max VUs, 1m0s max duration (incl. graceful stop):
+              * default: Up to 5 looping VUs for 30s over 3 stages (gracefulRampDown: 30s, gracefulStop: 30s)
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 94      1.967536/s
+    checks_succeeded...: 100.00% 94 out of 94
+    checks_failed......: 0.00%   0 out of 94
+
+    ✓ status is 200
+
+    CUSTOM
+    cold_misses....................: 10     0.209312/s
+    exact_hits.....................: 58     1.214011/s
+    semantic_hits..................: 23     0.481418/s
+
+    HTTP
+    http_req_duration..............: avg=1.62s min=914.4µs med=1.57ms  max=18.31s p(90)=2.91s p(95)=15.08s
+      { expected_response:true }...: avg=1.62s min=914.4µs med=1.57ms  max=18.31s p(90)=2.91s p(95)=15.08s
+    http_req_failed................: 0.00%  0 out of 96
+    http_reqs......................: 96     2.009398/s
+
+    EXECUTION
+    iteration_duration.............: avg=1.79s min=51.82ms med=52.61ms max=18.81s p(90)=3.98s p(95)=15.58s
+    iterations.....................: 94     1.967536/s
+    vus............................: 1      min=0       max=5
+    vus_max........................: 5      min=5       max=5
+```
+
+### Observed Metrics
+| Metric | Measured Value | Real-World Production Impact |
+| :--- | :--- | :--- |
+| **Exact Cache Hits** | **58 (63.7%)** | Resolved via Redis in sub-2ms |
+| **Semantic Cache Hits** | **23 (25.3%)** | Resolved via pgvector in ~680ms |
+| **Cold Upstream Misses** | **10 (11.0%)** | Sent to Google Gemini API |
+| **Total Cache Hit Ratio** | **89.01%** (81 out of 91) | **89% reduction in upstream API cost and token consumption** |
+| **Overall Median (P50) Latency** | **1.57 ms** | Despite 11% taking 15s+ upstream, 50% of users experience sub-2ms speed |
+| **Overall Average Latency** | **1.62 seconds** | Slashed from 10.52s cold baseline |
+| **Error Rate** | **0.00%** (0 out of 96 requests failed) | Zero dropped connections or pool exhaustion |
+
+

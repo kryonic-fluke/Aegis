@@ -141,3 +141,26 @@ func TestChatCompletions_RoutingAndProviderHeaders(t *testing.T) {
 		t.Errorf("expected X-Provider primary, got %s", provider)
 	}
 }
+
+func TestIndexEndpoint(t *testing.T) {
+	srv := newTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "text/html") {
+		t.Errorf("expected text/html content type, got %s", contentType)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Aegis AI Gateway") {
+		t.Errorf("expected body to contain Aegis AI Gateway")
+	}
+}

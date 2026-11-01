@@ -11,6 +11,7 @@ import (
 )
 
 func (s *Server) setupRoutes() {
+	s.router.Get("/", s.handleIndex)
 	s.router.Get("/health", s.handleHealth)
 	s.router.Handle("/metrics", promhttp.Handler())
 

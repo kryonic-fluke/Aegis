@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aegis AI Gateway — Architecture & System Design</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .tab-active { border-bottom: 2px solid #3b82f6; color: #60a5fa; font-weight: 600; }
+    .flow-line { stroke: #60a5fa; stroke-width: 2; stroke-dasharray: 4; animation: dash 20s linear infinite; }
+    @keyframes dash { to { stroke-dashoffset: -1000; } }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex flex-wrap justify-between items-center">
+    <div>
+      <h1 class="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400">
+        Aegis AI Gateway — Visual Architecture
+      </h1>
+      <p class="text-xs text-slate-400">High-Performance Reverse Proxy, 2-Tier Caching & Token Bucket Rate Limiting</p>
+    </div>
+    <div class="flex gap-2 mt-3 sm:mt-0 text-xs">
+      <span class="px-2.5 py-1 rounded bg-blue-950/80 text-blue-300 border border-blue-800">Go 1.26</span>
+      <span class="px-2.5 py-1 rounded bg-red-950/80 text-red-300 border border-red-800">Redis 7</span>
+      <span class="px-2.5 py-1 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800">PostgreSQL + pgvector</span>
+      <span class="px-2.5 py-1 rounded bg-amber-950/80 text-amber-300 border border-amber-800">Prometheus</span>
+    </div>
+  </header>
+
+  <nav class="border-b border-slate-800 bg-slate-900/40 px-6 flex space-x-6 text-sm overflow-x-auto">
+    <button onclick="switchTab('entities')" id="tab-entities" class="py-3 text-slate-400 hover:text-slate-200 tab-active">
+      1. Entity & Attribute Catalog
+    </button>
+    <button onclick="switchTab('er')" id="tab-er" class="py-3 text-slate-400 hover:text-slate-200">
+      2. Entity-Relationship (ER)
+    </button>
+    <button onclick="switchTab('dfd0')" id="tab-dfd0" class="py-3 text-slate-400 hover:text-slate-200">
+      3. DFD Level 0 (Context)
+    </button>
+    <button onclick="switchTab('dfd1')" id="tab-dfd1" class="py-3 text-slate-400 hover:text-slate-200">
+      4. DFD Level 1 (Pipeline)
+    </button>
+    <button onclick="switchTab('cheatsheet')" id="tab-cheatsheet" class="py-3 text-slate-400 hover:text-slate-200">
+      5. Interview Cheatsheet
+    </button>
+  </nav>
+
+  <main class="p-6 max-w-7xl mx-auto">
+    <!-- SECTION 1: ENTITY CATALOG -->
+    <section id="sec-entities" class="space-y-6">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+        <h2 class="text-base font-semibold text-blue-400">1. Isolated Entity & Attribute Catalog</h2>
+        <p class="text-xs text-slate-400 mt-1">Granular specification of all 10 domain entities, memory structures, and database records (no relation lines).</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- ChatRequest -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-slate-100">ChatRequest</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-blue-900/50 text-blue-300 font-mono">In-Memory Struct</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">Model</td><td class="py-1 text-indigo-300">string</td></tr>
+              <tr><td class="py-1 text-slate-400">Messages</td><td class="py-1 text-indigo-300">[]Message</td></tr>
+              <tr><td class="py-1 text-slate-400">Stream</td><td class="py-1 text-indigo-300">bool</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Message -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-slate-100">Message</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-blue-900/50 text-blue-300 font-mono">Value Object</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">Role</td><td class="py-1 text-indigo-300">string ("user"|"assistant")</td></tr>
+              <tr><td class="py-1 text-slate-400">Content</td><td class="py-1 text-indigo-300">string</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ChatResponse -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-slate-100">ChatResponse</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-blue-900/50 text-blue-300 font-mono">OpenAI Compatible</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">ID</td><td class="py-1 text-indigo-300">string</td></tr>
+              <tr><td class="py-1 text-slate-400">Object</td><td class="py-1 text-indigo-300">string ("chat.completion")</td></tr>
+              <tr><td class="py-1 text-slate-400">Created</td><td class="py-1 text-indigo-300">int64 (Unix Timestamp)</td></tr>
+              <tr><td class="py-1 text-slate-400">Model</td><td class="py-1 text-indigo-300">string</td></tr>
+              <tr><td class="py-1 text-slate-400">Choices</td><td class="py-1 text-indigo-300">[]Choice</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ExactCacheEntry (Redis) -->
+        <div class="bg-slate-900 border border-red-900/40 rounded-xl p-4 shadow-sm hover:border-red-800 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-red-300">ExactCacheEntry</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-red-950 text-red-400 font-mono">Redis String (K/V)</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">Key</td><td class="py-1 text-red-300">exact:sha256(payload)</td></tr>
+              <tr><td class="py-1 text-slate-400">Value</td><td class="py-1 text-red-300">json(ChatResponse)</td></tr>
+              <tr><td class="py-1 text-slate-400">TTL</td><td class="py-1 text-red-300">24 Hours</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- SemanticCacheRecord (Postgres) -->
+        <div class="bg-slate-900 border border-cyan-900/40 rounded-xl p-4 shadow-sm hover:border-cyan-800 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-cyan-300">SemanticCacheRecord</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 font-mono">PostgreSQL pgvector</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">id</td><td class="py-1 text-cyan-300">BIGSERIAL PRIMARY KEY</td></tr>
+              <tr><td class="py-1 text-slate-400">prompt</td><td class="py-1 text-cyan-300">TEXT NOT NULL</td></tr>
+              <tr><td class="py-1 text-slate-400">model</td><td class="py-1 text-cyan-300">VARCHAR(100) NOT NULL</td></tr>
+              <tr><td class="py-1 text-slate-400">embedding</td><td class="py-1 text-cyan-300">vector(768) (HNSW index)</td></tr>
+              <tr><td class="py-1 text-slate-400">response</td><td class="py-1 text-cyan-300">JSONB NOT NULL</td></tr>
+              <tr><td class="py-1 text-slate-400">created_at</td><td class="py-1 text-cyan-300">TIMESTAMPTZ DEFAULT NOW()</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- TokenBucketRecord (Redis) -->
+        <div class="bg-slate-900 border border-amber-900/40 rounded-xl p-4 shadow-sm hover:border-amber-800 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-amber-300">TokenBucketRecord</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-amber-950 text-amber-400 font-mono">Redis Hash</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">Key</td><td class="py-1 text-amber-300">ratelimit:{client_ip}</td></tr>
+              <tr><td class="py-1 text-slate-400">tokens</td><td class="py-1 text-amber-300">float64 (Available Capacity)</td></tr>
+              <tr><td class="py-1 text-slate-400">last_refill</td><td class="py-1 text-amber-300">int64 (Unix Timestamp)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ModelRoutingDecision -->
+        <div class="bg-slate-900 border border-purple-900/40 rounded-xl p-4 shadow-sm hover:border-purple-800 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-purple-300">ModelRoutingDecision</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-purple-950 text-purple-400 font-mono">Classifier Result</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">Class</td><td class="py-1 text-purple-300">FAST | BALANCED | DEEP</td></tr>
+              <tr><td class="py-1 text-slate-400">SelectedModel</td><td class="py-1 text-purple-300">string (e.g. gemini-3.5-flash-lite)</td></tr>
+              <tr><td class="py-1 text-slate-400">FinalScores</td><td class="py-1 text-purple-300">map[RouteClass]float32</td></tr>
+              <tr><td class="py-1 text-slate-400">Reason</td><td class="py-1 text-purple-300">string</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- FailoverTrackingInfo -->
+        <div class="bg-slate-900 border border-emerald-900/40 rounded-xl p-4 shadow-sm hover:border-emerald-800 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-emerald-300">FailoverTrackingInfo</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 font-mono">Context Carrier</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">Triggered</td><td class="py-1 text-emerald-300">bool</td></tr>
+              <tr><td class="py-1 text-slate-400">PrimaryErr</td><td class="py-1 text-emerald-300">error</td></tr>
+              <tr><td class="py-1 text-slate-400">AttemptCount</td><td class="py-1 text-emerald-300">int</td></tr>
+              <tr><td class="py-1 text-slate-400">ActiveProvider</td><td class="py-1 text-emerald-300">"primary" | "secondary"</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PrometheusMetricEntry -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+            <span class="font-bold text-sm text-slate-100">PrometheusMetricEntry</span>
+            <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">Telemetry</span>
+          </div>
+          <table class="w-full text-xs text-left">
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              <tr><td class="py-1 text-slate-400">aegis_requests_total</td><td class="py-1 text-slate-300">method, route, status, cache</td></tr>
+              <tr><td class="py-1 text-slate-400">aegis_request_duration</td><td class="py-1 text-slate-300">histogram (0.001s .. 30s)</td></tr>
+              <tr><td class="py-1 text-slate-400">aegis_cache_hits_total</td><td class="py-1 text-slate-300">layer: "exact" | "semantic"</td></tr>
+              <tr><td class="py-1 text-slate-400">aegis_rate_limit_blocks</td><td class="py-1 text-slate-300">counter (429 rejections)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: ER DIAGRAM -->
+    <section id="sec-er" class="space-y-6 hidden">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+        <h2 class="text-base font-semibold text-blue-400">2. Entity-Relationship (ER) Architecture</h2>
+        <p class="text-xs text-slate-400 mt-1">Illustrating primary keys, foreign associations, and cardinalities across cache tables, client sessions, and LLM completions.</p>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 overflow-x-auto">
+        <svg viewBox="0 0 1100 520" class="w-full min-w-[900px] h-auto text-xs font-mono">
+          <!-- Background Grid / Bounds -->
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#60a5fa" />
+            </marker>
+            <marker id="circle" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6">
+              <circle cx="5" cy="5" r="3" fill="#94a3b8" />
+            </marker>
+          </defs>
+
+          <!-- CLIENT_IP Box -->
+          <g transform="translate(40, 40)">
+            <rect width="180" height="110" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+            <text x="12" y="24" fill="#fbbf24" font-weight="bold">CLIENT_IP</text>
+            <line x1="0" y1="34" x2="180" y2="34" stroke="#334155"/>
+            <text x="12" y="55" fill="#e2e8f0"><tspan fill="#f59e0b">PK</tspan> ip_address</text>
+            <text x="12" y="75" fill="#94a3b8">first_seen_time</text>
+            <text x="12" y="95" fill="#94a3b8">total_requests</text>
+          </g>
+
+          <!-- TOKEN_BUCKET Box -->
+          <g transform="translate(40, 240)">
+            <rect width="180" height="130" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+            <text x="12" y="24" fill="#fbbf24" font-weight="bold">TOKEN_BUCKET (Redis)</text>
+            <line x1="0" y1="34" x2="180" y2="34" stroke="#334155"/>
+            <text x="12" y="55" fill="#e2e8f0"><tspan fill="#f59e0b">PK</tspan> key "ratelimit:ip"</text>
+            <text x="12" y="75" fill="#94a3b8">tokens : float64</text>
+            <text x="12" y="95" fill="#94a3b8">last_refill : int64</text>
+            <text x="12" y="115" fill="#94a3b8">ttl : 60s</text>
+          </g>
+
+          <!-- CHAT_REQUEST Box -->
+          <g transform="translate(320, 40)">
+            <rect width="210" height="150" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="12" y="24" fill="#60a5fa" font-weight="bold">CHAT_REQUEST</text>
+            <line x1="0" y1="34" x2="210" y2="34" stroke="#334155"/>
+            <text x="12" y="55" fill="#e2e8f0">model : string</text>
+            <text x="12" y="75" fill="#e2e8f0">messages : []Message</text>
+            <text x="12" y="95" fill="#e2e8f0">stream : bool</text>
+            <text x="12" y="115" fill="#94a3b8"><tspan fill="#60a5fa">DERIV</tspan> prompt : string</text>
+            <text x="12" y="135" fill="#94a3b8"><tspan fill="#60a5fa">DERIV</tspan> sha256_hash : string</text>
+          </g>
+
+          <!-- MESSAGE Box -->
+          <g transform="translate(320, 270)">
+            <rect width="210" height="100" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="1.5"/>
+            <text x="12" y="24" fill="#60a5fa" font-weight="bold">MESSAGE</text>
+            <line x1="0" y1="34" x2="210" y2="34" stroke="#334155"/>
+            <text x="12" y="55" fill="#e2e8f0">role : "user"|"assistant"</text>
+            <text x="12" y="75" fill="#e2e8f0">content : string</text>
+          </g>
+
+          <!-- EXACT_CACHE_ENTRY Box -->
+          <g transform="translate(620, 40)">
+            <rect width="200" height="110" rx="8" fill="#0f172a" stroke="#ef4444" stroke-width="1.5"/>
+            <text x="12" y="24" fill="#f87171" font-weight="bold">EXACT_CACHE (Redis)</text>
+            <line x1="0" y1="34" x2="200" y2="34" stroke="#334155"/>
+            <text x="12" y="55" fill="#e2e8f0"><tspan fill="#ef4444">PK</tspan> key "exact:sha256"</text>
+            <text x="12" y="75" fill="#94a3b8">value : json(Response)</text>
+            <text x="12" y="95" fill="#94a3b8">ttl : 86400 (24h)</text>
+          </g>
+
+          <!-- SEMANTIC_CACHE_RECORD Box -->
+          <g transform="translate(620, 220)">
+            <rect width="210" height="170" rx="8" fill="#0f172a" stroke="#06b6d4" stroke-width="1.5"/>
+            <text x="12" y="24" fill="#22d3ee" font-weight="bold">SEMANTIC_CACHE (pgvector)</text>
+            <line x1="0" y1="34" x2="210" y2="34" stroke="#334155"/>
+            <text x="12" y="55" fill="#e2e8f0"><tspan fill="#06b6d4">PK</tspan> id : BIGSERIAL</text>
+            <text x="12" y="75" fill="#94a3b8">prompt : TEXT</text>
+            <text x="12" y="95" fill="#94a3b8">model : VARCHAR(100)</text>
+            <text x="12" y="115" fill="#e2e8f0"><tspan fill="#06b6d4">IDX</tspan> embedding : vector(768)</text>
+            <text x="12" y="135" fill="#94a3b8">response : JSONB</text>
+            <text x="12" y="155" fill="#94a3b8">created_at : TIMESTAMPTZ</text>
+          </g>
+
+          <!-- CHAT_RESPONSE Box -->
+          <g transform="translate(890, 40)">
+            <rect width="180" height="150" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+            <text x="12" y="24" fill="#34d399" font-weight="bold">CHAT_RESPONSE</text>
+            <line x1="0" y1="34" x2="180" y2="34" stroke="#334155"/>
+            <text x="12" y="55" fill="#e2e8f0"><tspan fill="#10b981">PK</tspan> id : string</text>
+            <text x="12" y="75" fill="#94a3b8">object : string</text>
+            <text x="12" y="95" fill="#94a3b8">created : int64</text>
+            <text x="12" y="115" fill="#94a3b8">model : string</text>
+            <text x="12" y="135" fill="#e2e8f0">choices : []Choice</text>
+          </g>
+
+          <!-- RELATION CONNECTORS -->
+          <!-- Client IP -> Token Bucket (1 to 1) -->
+          <path d="M 130 150 L 130 240" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="135" y="200" fill="#fbbf24">1 : 1</text>
+
+          <!-- Client IP -> Chat Request (1 to N) -->
+          <path d="M 220 95 L 320 95" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="250" y="85" fill="#fbbf24">1 : N</text>
+
+          <!-- Chat Request -> Message (1 to N) -->
+          <path d="M 425 190 L 425 270" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="435" y="235" fill="#60a5fa">1 : N</text>
+
+          <!-- Chat Request -> Exact Cache (1 to 1 hash) -->
+          <path d="M 530 95 L 620 95" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrow)"/>
+          <text x="545" y="85" fill="#f87171">hashes to</text>
+
+          <!-- Chat Request -> Semantic Cache (0 to 1 match) -->
+          <path d="M 470 190 L 470 300 L 620 300" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrow)"/>
+          <text x="500" y="290" fill="#22d3ee">cosine match</text>
+
+          <!-- Response -> Exact Cache (value) -->
+          <path d="M 890 95 L 820 95" stroke="#10b981" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="835" y="85" fill="#34d399">cached as</text>
+
+          <!-- Response -> Semantic Cache (JSONB) -->
+          <path d="M 980 190 L 980 300 L 830 300" stroke="#10b981" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="880" y="290" fill="#34d399">stores JSONB</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- SECTION 3: DFD LEVEL 0 -->
+    <section id="sec-dfd0" class="space-y-6 hidden">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+        <h2 class="text-base font-semibold text-blue-400">3. Data Flow Diagram (DFD) — Level 0: Context Boundary</h2>
+        <p class="text-xs text-slate-400 mt-1">Single-process perspective identifying external systems, ingress calls, and observability egress.</p>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 overflow-x-auto">
+        <svg viewBox="0 0 1000 440" class="w-full min-w-[800px] h-auto text-xs font-mono">
+          <defs>
+            <marker id="dfd-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+            </marker>
+          </defs>
+
+          <!-- CLIENT -->
+          <g transform="translate(50, 160)">
+            <rect width="180" height="110" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+            <text x="90" y="45" fill="#e2e8f0" font-weight="bold" text-anchor="middle" font-size="14">Client Application</text>
+            <text x="90" y="70" fill="#94a3b8" text-anchor="middle">API Consumer / SDK</text>
+            <text x="90" y="90" fill="#94a3b8" text-anchor="middle">(External Entity)</text>
+          </g>
+
+          <!-- AEGIS CENTRAL PROCESS -->
+          <g transform="translate(380, 130)">
+            <circle cx="90" cy="90" r="90" fill="#0f172a" stroke="#3b82f6" stroke-width="3"/>
+            <text x="90" y="75" fill="#60a5fa" font-weight="bold" text-anchor="middle" font-size="15">0.0</text>
+            <text x="90" y="95" fill="#f8fafc" font-weight="bold" text-anchor="middle" font-size="14">Aegis AI Gateway</text>
+            <text x="90" y="115" fill="#94a3b8" text-anchor="middle">Core Reverse Proxy</text>
+          </g>
+
+          <!-- PROMETHEUS -->
+          <g transform="translate(380, 10)">
+            <rect width="180" height="70" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+            <text x="90" y="32" fill="#fbbf24" font-weight="bold" text-anchor="middle">Prometheus Server</text>
+            <text x="90" y="52" fill="#94a3b8" text-anchor="middle">(Monitoring Ingestion)</text>
+          </g>
+
+          <!-- PRIMARY LLM -->
+          <g transform="translate(750, 80)">
+            <rect width="200" height="100" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
+            <text x="100" y="38" fill="#34d399" font-weight="bold" text-anchor="middle">Primary LLM Provider</text>
+            <text x="100" y="60" fill="#e2e8f0" text-anchor="middle">Google Gemini API</text>
+            <text x="100" y="80" fill="#94a3b8" text-anchor="middle">(Upstream Cloud API)</text>
+          </g>
+
+          <!-- SECONDARY LLM -->
+          <g transform="translate(750, 240)">
+            <rect width="200" height="100" rx="8" fill="#1e293b" stroke="#8b5cf6" stroke-width="1.5"/>
+            <text x="100" y="38" fill="#a78bfa" font-weight="bold" text-anchor="middle">Secondary LLM Provider</text>
+            <text x="100" y="60" fill="#e2e8f0" text-anchor="middle">Fallback Model Provider</text>
+            <text x="100" y="80" fill="#94a3b8" text-anchor="middle">(Failover Circuit)</text>
+          </g>
+
+          <!-- FLOWS -->
+          <!-- Client -> Aegis -->
+          <path d="M 230 195 L 380 195" stroke="#38bdf8" stroke-width="2" marker-end="url(#dfd-arrow)"/>
+          <text x="240" y="185" fill="#38bdf8">1. POST /v1/chat/completions</text>
+
+          <!-- Aegis -> Client -->
+          <path d="M 380 235 L 230 235" stroke="#38bdf8" stroke-width="2" marker-end="url(#dfd-arrow)"/>
+          <text x="240" y="255" fill="#38bdf8">2. HTTP 200 (JSON/SSE) | 429</text>
+
+          <!-- Aegis -> Primary LLM -->
+          <path d="M 560 195 L 750 135" stroke="#10b981" stroke-width="2" marker-end="url(#dfd-arrow)"/>
+          <text x="580" y="150" fill="#34d399">3. ChatRequest (Cold Miss)</text>
+
+          <!-- Primary LLM -> Aegis -->
+          <path d="M 750 165 L 560 215" stroke="#10b981" stroke-width="2" marker-end="url(#dfd-arrow)"/>
+          <text x="590" y="200" fill="#34d399">4. Generated Completion</text>
+
+          <!-- Aegis -> Secondary LLM (Failover) -->
+          <path d="M 540 250 L 750 280" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="4" marker-end="url(#dfd-arrow)"/>
+          <text x="580" y="285" fill="#a78bfa">5. On 5xx/429 Failover</text>
+
+          <!-- Prometheus Scrapes Aegis -->
+          <path d="M 470 130 L 470 80" stroke="#f59e0b" stroke-width="2" marker-end="url(#dfd-arrow)"/>
+          <text x="480" y="110" fill="#fbbf24">6. GET /metrics (Scrape)</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- SECTION 4: DFD LEVEL 1 -->
+    <section id="sec-dfd1" class="space-y-6 hidden">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+        <h2 class="text-base font-semibold text-blue-400">4. Data Flow Diagram (DFD) — Level 1: Subsystem Pipeline</h2>
+        <p class="text-xs text-slate-400 mt-1">Detailed functional decomposition tracking request transformation through 7 processes and 4 physical data stores.</p>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 overflow-x-auto">
+        <svg viewBox="0 0 1100 860" class="w-full min-w-[950px] h-auto text-xs font-mono">
+          <defs>
+            <marker id="d1-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#60a5fa" />
+            </marker>
+          </defs>
+
+          <!-- INGRESS CLIENT -->
+          <g transform="translate(40, 50)">
+            <rect width="140" height="60" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+            <text x="70" y="35" fill="#f8fafc" font-weight="bold" text-anchor="middle">Client App</text>
+          </g>
+
+          <!-- P1: RATE LIMITING -->
+          <g transform="translate(260, 40)">
+            <rect width="220" height="80" rx="10" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
+            <text x="110" y="32" fill="#fbbf24" font-weight="bold" text-anchor="middle">1.0 Rate Limiting</text>
+            <text x="110" y="55" fill="#94a3b8" text-anchor="middle">Atomic Token Bucket</text>
+          </g>
+
+          <!-- D1: REDIS TOKEN STORE -->
+          <g transform="translate(600, 45)">
+            <path d="M 0 10 C 0 0, 180 0, 180 10 L 180 60 C 180 70, 0 70, 0 60 Z" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+            <path d="M 0 10 C 0 20, 180 20, 180 10" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+            <text x="90" y="45" fill="#fbbf24" text-anchor="middle" font-weight="bold">D1: Redis (ratelimit:ip)</text>
+          </g>
+
+          <!-- P2: EXACT CACHE CHECK -->
+          <g transform="translate(260, 170)">
+            <rect width="220" height="80" rx="10" fill="#0f172a" stroke="#ef4444" stroke-width="2"/>
+            <text x="110" y="32" fill="#f87171" font-weight="bold" text-anchor="middle">2.0 Exact Cache Check</text>
+            <text x="110" y="55" fill="#94a3b8" text-anchor="middle">SHA-256 Payload Hash</text>
+          </g>
+
+          <!-- D2: REDIS EXACT CACHE -->
+          <g transform="translate(600, 175)">
+            <path d="M 0 10 C 0 0, 180 0, 180 10 L 180 60 C 180 70, 0 70, 0 60 Z" fill="#1e293b" stroke="#ef4444" stroke-width="1.5"/>
+            <path d="M 0 10 C 0 20, 180 20, 180 10" fill="none" stroke="#ef4444" stroke-width="1.5"/>
+            <text x="90" y="45" fill="#f87171" text-anchor="middle" font-weight="bold">D2: Redis (exact:hash)</text>
+          </g>
+
+          <!-- P3: SEMANTIC CACHE CHECK -->
+          <g transform="translate(260, 300)">
+            <rect width="220" height="80" rx="10" fill="#0f172a" stroke="#06b6d4" stroke-width="2"/>
+            <text x="110" y="32" fill="#22d3ee" font-weight="bold" text-anchor="middle">3.0 Semantic Vector Cache</text>
+            <text x="110" y="55" fill="#94a3b8" text-anchor="middle">Embed + HNSW Cosine Search</text>
+          </g>
+
+          <!-- D3: POSTGRES PGVECTOR -->
+          <g transform="translate(600, 305)">
+            <path d="M 0 10 C 0 0, 180 0, 180 10 L 180 60 C 180 70, 0 70, 0 60 Z" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5"/>
+            <path d="M 0 10 C 0 20, 180 20, 180 10" fill="none" stroke="#06b6d4" stroke-width="1.5"/>
+            <text x="90" y="45" fill="#22d3ee" text-anchor="middle" font-weight="bold">D3: pgvector (semantic_cache)</text>
+          </g>
+
+          <!-- P4: MODEL ROUTER -->
+          <g transform="translate(260, 430)">
+            <rect width="220" height="80" rx="10" fill="#0f172a" stroke="#8b5cf6" stroke-width="2"/>
+            <text x="110" y="32" fill="#a78bfa" font-weight="bold" text-anchor="middle">4.0 Hybrid Model Router</text>
+            <text x="110" y="55" fill="#94a3b8" text-anchor="middle">65% Semantic + 35% Heuristic</text>
+          </g>
+
+          <!-- P5: EXECUTION & FAILOVER -->
+          <g transform="translate(260, 560)">
+            <rect width="220" height="90" rx="10" fill="#0f172a" stroke="#10b981" stroke-width="2"/>
+            <text x="110" y="32" fill="#34d399" font-weight="bold" text-anchor="middle">5.0 Upstream Execution</text>
+            <text x="110" y="55" fill="#94a3b8" text-anchor="middle">& Provider Failover</text>
+            <text x="110" y="73" fill="#64748b" text-anchor="middle">(Primary -> Secondary)</text>
+          </g>
+
+          <!-- P6: CACHE BACKFILL -->
+          <g transform="translate(600, 560)">
+            <rect width="220" height="90" rx="10" fill="#0f172a" stroke="#3b82f6" stroke-width="2"/>
+            <text x="110" y="32" fill="#60a5fa" font-weight="bold" text-anchor="middle">6.0 Cache Invalidation</text>
+            <text x="110" y="55" fill="#94a3b8" text-anchor="middle">& Exact Backfill</text>
+            <text x="110" y="73" fill="#64748b" text-anchor="middle">(Redis Set + Postgres Insert)</text>
+          </g>
+
+          <!-- P7: METRICS OBSERVE -->
+          <g transform="translate(260, 710)">
+            <rect width="220" height="80" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+            <text x="110" y="32" fill="#38bdf8" font-weight="bold" text-anchor="middle">7.0 Metrics & Telemetry</text>
+            <text x="110" y="55" fill="#94a3b8" text-anchor="middle">Prometheus Recorder & Egress</text>
+          </g>
+
+          <!-- D4: PROMETHEUS REGISTRY -->
+          <g transform="translate(600, 715)">
+            <path d="M 0 10 C 0 0, 180 0, 180 10 L 180 60 C 180 70, 0 70, 0 60 Z" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+            <path d="M 0 10 C 0 20, 180 20, 180 10" fill="none" stroke="#38bdf8" stroke-width="1.5"/>
+            <text x="90" y="45" fill="#38bdf8" text-anchor="middle" font-weight="bold">D4: Prometheus Metrics</text>
+          </g>
+
+          <!-- FLOW ARROWS -->
+          <!-- Ingress -> P1 -->
+          <path d="M 180 80 L 260 80" stroke="#60a5fa" stroke-width="2" marker-end="url(#d1-arrow)"/>
+          <text x="195" y="70" fill="#94a3b8">HTTP Req</text>
+
+          <!-- P1 <-> D1 -->
+          <path d="M 480 80 L 600 80" stroke="#f59e0b" stroke-width="2" marker-end="url(#d1-arrow)"/>
+
+          <!-- P1 -> P2 -->
+          <path d="M 370 120 L 370 170" stroke="#60a5fa" stroke-width="2" marker-end="url(#d1-arrow)"/>
+          <text x="380" y="145" fill="#94a3b8">Allowed</text>
+
+          <!-- P2 <-> D2 -->
+          <path d="M 480 210 L 600 210" stroke="#ef4444" stroke-width="2" marker-end="url(#d1-arrow)"/>
+
+          <!-- P2 -> P3 (On Miss) -->
+          <path d="M 370 250 L 370 300" stroke="#60a5fa" stroke-width="2" marker-end="url(#d1-arrow)"/>
+          <text x="380" y="275" fill="#f87171">EXACT_MISS</text>
+
+          <!-- P2 -> P7 (On Exact Hit) -->
+          <path d="M 260 210 L 140 210 L 140 750 L 260 750" stroke="#10b981" stroke-width="2" stroke-dasharray="4" marker-end="url(#d1-arrow)"/>
+          <text x="145" y="370" fill="#34d399">EXACT_HIT (2.1ms)</text>
+
+          <!-- P3 <-> D3 -->
+          <path d="M 480 340 L 600 340" stroke="#06b6d4" stroke-width="2" marker-end="url(#d1-arrow)"/>
+
+          <!-- P3 -> P4 (On Miss) -->
+          <path d="M 370 380 L 370 430" stroke="#60a5fa" stroke-width="2" marker-end="url(#d1-arrow)"/>
+          <text x="380" y="405" fill="#22d3ee">SEMANTIC_MISS</text>
+
+          <!-- P3 -> P6 (On Semantic Hit) -->
+          <path d="M 480 360 L 540 360 L 540 590 L 600 590" stroke="#06b6d4" stroke-width="2" stroke-dasharray="4" marker-end="url(#d1-arrow)"/>
+          <text x="490" y="490" fill="#22d3ee">SEMANTIC_HIT (678ms)</text>
+
+          <!-- P4 -> P5 -->
+          <path d="M 370 510 L 370 560" stroke="#60a5fa" stroke-width="2" marker-end="url(#d1-arrow)"/>
+          <text x="380" y="535" fill="#a78bfa">Classified Model</text>
+
+          <!-- P5 -> P6 -->
+          <path d="M 480 605 L 600 605" stroke="#60a5fa" stroke-width="2" marker-end="url(#d1-arrow)"/>
+          <text x="495" y="595" fill="#94a3b8">Fresh Result</text>
+
+          <!-- P6 -> D2 (Backfill) -->
+          <path d="M 710 560 L 710 245" stroke="#ef4444" stroke-width="2" stroke-dasharray="4" marker-end="url(#d1-arrow)"/>
+          <text x="720" y="410" fill="#f87171">Backfill exact:sha256</text>
+
+          <!-- P6 -> D3 (Insert vector) -->
+          <path d="M 680 560 L 680 375" stroke="#06b6d4" stroke-width="2" stroke-dasharray="4" marker-end="url(#d1-arrow)"/>
+          <text x="630" y="450" fill="#22d3ee">Insert vector</text>
+
+          <!-- P6 -> P7 -->
+          <path d="M 710 650 L 710 685 L 370 685 L 370 710" stroke="#60a5fa" stroke-width="2" marker-end="url(#d1-arrow)"/>
+
+          <!-- P7 <-> D4 -->
+          <path d="M 480 750 L 600 750" stroke="#38bdf8" stroke-width="2" marker-end="url(#d1-arrow)"/>
+
+          <!-- P7 -> Client Response -->
+          <path d="M 260 770 L 110 770 L 110 110" stroke="#10b981" stroke-width="2" marker-end="url(#d1-arrow)"/>
+          <text x="15" y="440" fill="#34d399">HTTP 200 (JSON / SSE)</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- SECTION 5: CHEATSHEET -->
+    <section id="sec-cheatsheet" class="space-y-6 hidden">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+        <h2 class="text-base font-semibold text-blue-400">5. System Design Interview Defense & Talking Points</h2>
+        <p class="text-xs text-slate-400 mt-1">High-yield empirical arguments, architectural justifications, and latency trade-offs.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span> Why Two-Tier Caching?
+          </h3>
+          <p class="text-slate-300 leading-relaxed">
+            <strong class="text-blue-300">Redis Exact Cache (Tier 1):</strong> Evaluates in <strong>2.11 ms</strong> with zero embedding cost. Absorbs 60–70% of high-frequency repeated queries at 1,417+ req/s.
+          </p>
+          <p class="text-slate-300 leading-relaxed">
+            <strong class="text-cyan-300">PostgreSQL pgvector (Tier 2):</strong> Matches semantically equivalent prompts (20–25% of traffic) in <strong>678 ms</strong> vs. 9,110 ms cold upstream, yielding a <strong>92.55% latency reduction</strong>.
+          </p>
+          <p class="text-slate-300 leading-relaxed">
+            <strong class="text-emerald-300">Backfill Mechanics:</strong> When a semantic hit resolves, Aegis writes that specific paraphrase to Redis exact cache. Next time, it resolves in <strong>2.1 ms (322x speedup)</strong>.
+          </p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> Distributed Rate Limiting via Lua
+          </h3>
+          <p class="text-slate-300 leading-relaxed">
+            <strong class="text-amber-300">The Problem:</strong> In distributed systems, separate read-modify-write calls create race conditions (Check-Then-Act anti-pattern) under multi-replica deployments.
+          </p>
+          <p class="text-slate-300 leading-relaxed">
+            <strong class="text-amber-300">The Solution:</strong> Atomic Redis Lua scripts calculate token replenishment and capacity consumption in a single atomic transaction without distributed locks.
+          </p>
+          <p class="text-slate-300 leading-relaxed">
+            <strong class="text-amber-300">Empirically Verified:</strong> Sustained <strong>154,378 burst requests at 7,525.8 req/s</strong> with zero 5xx server crashes and 2.07 ms rejection latency.
+          </p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-cyan-500"></span> The Semantic Cache Bottleneck
+          </h3>
+          <p class="text-slate-300 leading-relaxed">
+            In our benchmarks, we instrumented separate headers for local vector search vs. cloud embedding:
+          </p>
+          <ul class="list-disc pl-4 space-y-1 text-slate-300 font-mono">
+            <li>Local pgvector HNSW search: <span class="text-cyan-400 font-bold">1.01 ms</span></li>
+            <li>Google Gemini Embedding API: <span class="text-amber-400 font-bold">684.54 ms</span></li>
+          </ul>
+          <p class="text-slate-300 leading-relaxed">
+            <strong class="text-cyan-300">Takeaway:</strong> pgvector is <em>not</em> the bottleneck (accounting for &lt;0.2% of retrieval). 99.8% of time is the external network hop. In production, hosting an in-cluster embedding container (ONNX / TEI) drops semantic retrieval under 15 ms.
+          </p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Realistic Mixed Traffic (70/20/10)
+          </h3>
+          <p class="text-slate-300 leading-relaxed">
+            When tested under real-world Pareto traffic (64% exact hits, 25% semantic hits, 11% cold misses):
+          </p>
+          <ul class="list-disc pl-4 space-y-1 text-slate-300 font-mono">
+            <li>Total Cache Hit Ratio: <span class="text-emerald-400 font-bold">89.01%</span></li>
+            <li>Token / Cost Savings: <span class="text-emerald-400 font-bold">~89%</span></li>
+            <li>Blended Median (P50) Latency: <span class="text-blue-400 font-bold">1.57 ms</span></li>
+          </ul>
+          <p class="text-slate-300 leading-relaxed">
+            Even when 11% of requests take 9–18s upstream, <strong>half of all users experience 1.57 ms speed</strong> because 89% of calls are absorbed by the multi-tier cache.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function switchTab(tabId) {
+      const tabs = ['entities', 'er', 'dfd0', 'dfd1', 'cheatsheet'];
+      tabs.forEach(t => {
+        const btn = document.getElementById('tab-' + t);
+        const sec = document.getElementById('sec-' + t);
+        if (t === tabId) {
+          btn.classList.add('tab-active');
+          sec.classList.remove('hidden');
+        } else {
+          btn.classList.remove('tab-active');
+          sec.classList.add('hidden');
+        }
+      });
+    }
+  </script>
+</body>
+</html>
